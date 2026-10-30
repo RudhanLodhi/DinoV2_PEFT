@@ -1,6 +1,6 @@
 """DINOv2 backbone loading and inspection utilities.
 
-Wraps MHRDYN7/dinov2_vitb14 (ViT-B/14, hidden_size=768) loaded via AutoModel.
+Wraps facebook/dinov2-base (ViT-B/14, hidden_size=768) loaded via AutoModel.
 Provides freeze/unfreeze helpers and layer-name inspection for LoRA target
 configuration.
 """
@@ -9,7 +9,7 @@ from typing import Any
 import torch.nn as nn
 from transformers import AutoImageProcessor, AutoModel
 
-BACKBONE_MODEL_ID: str = "MHRDYN7/dinov2_vitb14"
+BACKBONE_MODEL_ID: str = "facebook/dinov2-base"
 HIDDEN_SIZE: int = 768
 PROCESSOR_MODEL_ID: str = "facebook/dinov2-base"
 
