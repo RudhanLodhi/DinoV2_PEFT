@@ -1,0 +1,49 @@
+# ===== CheXpert Dataset Configuration =====
+
+dataset:
+  name: chexpert
+  hf_repo: danjacobellis/chexpert
+  image_column: image
+  label_names:
+    - No Finding
+    - Enlarged Cardiomediastinum
+    - Cardiomegaly
+    - Lung Opacity
+    - Lung Lesion
+    - Edema
+    - Consolidation
+    - Pneumonia
+    - Atelectasis
+    - Pneumothorax
+    - Pleural Effusion
+    - Pleural Other
+    - Fracture
+    - Support Devices
+  num_labels: 14
+  uncertainty_policy: u_zeros   # u_zeros | u_ones
+  frontal_only: true
+
+subset:
+  train_size: 10000    # 10000 | 20000 | null (full)
+  val_fixed: true      # always use full validation split
+  test_fixed: true     # always use full test split (if present)
+  seed: 42
+
+preprocessing:
+  image_size: 224
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std: [0.229, 0.224, 0.225]
+  train_augmentation: true
+
+training:
+  batch_size: 32
+  num_epochs: 10
+  lora_lr: 2.0e-4
+  head_lr: 5.0e-3
+  weight_decay: 0.01
+  fp16: true
+  seed: 42
+  output_dir: outputs/chexpert
+  logging_steps: 50
+  eval_strategy: epoch
+  save_total_limit: 2

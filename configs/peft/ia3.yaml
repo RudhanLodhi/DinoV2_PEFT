@@ -1,0 +1,17 @@
+# ===== IA³ PEFT Configuration =====
+# Scaffolded for Phase III experiments.
+# IA³ scales keys, values, and FFN intermediate activations with learned vectors.
+
+method: ia3
+
+ia3:
+  target_modules:
+    - key
+    - value
+    - output.dense         # FFN scaling
+  feedforward_modules:
+    - output.dense
+  init_ia3_weights: true
+  task_type: FEATURE_EXTRACTION
+  modules_to_save:
+    - classifier

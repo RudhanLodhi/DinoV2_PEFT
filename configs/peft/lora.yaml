@@ -1,0 +1,22 @@
+# ===== LoRA PEFT Configuration =====
+# Default values match the base paper (Appendix B.3).
+# Override from notebooks using config.load_config overrides dict.
+
+method: lora
+
+lora:
+  r: 48                         # rank; sweep: [4, 8, 16, 32, 48]
+  lora_alpha: 16
+  lora_dropout: 0.1
+  bias: none                    # none | all | lora_only
+  target_modules:               # DINOv2 ViT-B/14 attention projections
+    - query
+    - value
+  modules_to_save:              # always train classification head
+    - classifier
+  task_type: FEATURE_EXTRACTION
+
+layer_selection:
+  enabled: false                # set true for E3/E4 layer-selective experiments
+  layers: null                  # null = all layers; list of int indices otherwise
+  strategy: upper_quarter       # upper_quarter | lower_quarter | distributed | custom

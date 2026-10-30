@@ -1,0 +1,9 @@
+# ===== BitFit Configuration =====
+# Bias-only fine-tuning: all parameters frozen except bias terms.
+
+method: bitfit
+
+bitfit:
+  train_bias_only: true
+  modules_to_save:
+    - classifier
