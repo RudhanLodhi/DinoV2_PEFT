@@ -9,7 +9,7 @@
 
 This repository provides a modular, reproducible framework for Parameter-Efficient Fine-Tuning (PEFT) of Meta's DINOv2 vision transformer (`ViT-B/14`) on medical imaging benchmarks. We evaluate parameter efficiency, adaptation capacity, and convergence behavior across two distinct medical imaging modalities and task paradigms:
 
-1. **CheXpert Chest X-ray**: 14-label multi-label classification evaluating thoracic pathologies.
+1. **CheXpert Chest X-ray**: 5-label multi-label classification (Atelectasis, Cardiomegaly, Consolidation, Edema, Pleural Effusion) — the base paper's competition benchmark.
 2. **Brain Tumor MRI**: 3-class classification (meningioma, glioma, pituitary) on brain MRI slices.
 
 We systematically compare baseline Linear Probing, Low-Rank Adaptation (LoRA) — including rank sweeps, target-module studies, and layer-selective adaptation — as well as activation scaling via $(IA)^3$ and bias-only tuning (BitFit).
@@ -32,10 +32,10 @@ DinoV2B/
 ## Datasets
 
 ### CheXpert
-- **Task**: Multi-label chest radiograph classification across 14 radiological observations.
+- **Task**: Multi-label chest radiograph classification across 5 competition pathologies.
 - **Source**: Hugging Face repository [`danjacobellis/chexpert`](https://huggingface.co/datasets/danjacobellis/chexpert).
 - **Subsets**: Default training subset of 10,000 images (configurable to 20,000 or full dataset via configuration).
-- **Protocol**: Frontal-view filtering, standardized uncertainty label handling policies (`u_zeros` or `u_ones`), and fixed validation/test splits.
+- **Protocol**: Frontal-view filtering, standardized uncertainty label handling (`u_zeros` or `u_ones`), the full official validation split for model selection, and a **deterministic test carve-out** (20% of the training subset) so AUROC is reported on a genuine held-out set rather than the 234-image validation split alone.
 
 ### Brain Tumor MRI
 - **Task**: 3-class classification distinguishing meningioma (0), glioma (1), and pituitary (2) tumors.

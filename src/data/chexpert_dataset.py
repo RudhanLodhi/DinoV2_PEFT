@@ -1,8 +1,28 @@
-"""CheXpert 14-label multi-label chest X-ray dataset loader.
+"""CheXpert multi-label chest X-ray dataset loader.
 
-Loads from danjacobellis/chexpert on HuggingFace. Supports uncertainty policy
-(u_zeros/u_ones), frontal-only filter, and configurable training subset (10k, 20k,
-or full). Validation and test splits are always kept at full size.
+Reference: Baharoon et al. (2024, arXiv:2312.02366v4) and
+notebooks/0_Baseline_CheXpert.ipynb.
+
+Loads danjacobellis/chexpert from HuggingFace and mirrors the reference baseline
+protocol:
+
+  * 5 CheXpert competition labels (Atelectasis, Cardiomegaly, Consolidation,
+    Edema, Pleural Effusion).
+  * Frontal-view filtering.
+  * A 10,000-sample (configurable) training subset drawn with a fixed seed.
+  * A deterministic held-out test carve-out from that subset, so AUROC is not
+    reported on the tiny (234-sample) official validation split alone.
+  * U-Zeros / U-Ones uncertainty remapping.
+
+Label schema note
+-----------------
+danjacobellis/chexpert stores pathology columns as ClassLabel integers:
+
+    0 = unlabeled, 1 = uncertain, 2 = absent (negative), 3 = present (positive)
+
+Set ``dataset.hf_4class_encoding: true`` in configs/chexpert.yaml to interpret
+labels this way. For CSV-style encodings, values are expected as
+-1.0 (uncertain), 0.0 (absent), 1.0 (present); set the flag to false.
 """
 
 from collections.abc import Sequence
@@ -14,22 +34,20 @@ from PIL import Image
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+# 5 CheXpert competition labels used by the base paper's benchmark.
 LABEL_NAMES: list[str] = [
-    "No Finding",
-    "Enlarged Cardiomediastinum",
-    "Cardiomegaly",
-    "Lung Opacity",
-    "Lung Lesion",
-    "Edema",
-    "Consolidation",
-    "Pneumonia",
     "Atelectasis",
-    "Pneumothorax",
+    "Cardiomegaly",
+    "Consolidation",
+    "Edema",
     "Pleural Effusion",
-    "Pleural Other",
-    "Fracture",
-    "Support Devices",
 ]
+
+# danjacobellis/chexpert 4-class integer encoding.
+_HF_UNLABELED: float = 0.0
+_HF_UNCERTAIN: float = 1.0
+_HF_ABSENT: float = 2.0
+_HF_PRESENT: float = 3.0
 
 
 class CheXpertDataset(Dataset):
@@ -41,56 +59,73 @@ class CheXpertDataset(Dataset):
         transforms: Any | None = None,
         label_names: Sequence[str] | None = None,
         uncertainty_policy: str = "u_zeros",
+        hf_4class_encoding: bool = True,
     ) -> None:
         """Wraps a HuggingFace CheXpert split into a PyTorch Dataset.
 
-        Applies uncertainty remapping to binary labels.
-
         Args:
             hf_dataset: HuggingFace Dataset split.
-            transforms: Optional torchvision or callable transform.
+            transforms: Optional torchvision or callable transform pipeline.
             label_names: Ordered sequence of target pathology label names.
-            uncertainty_policy: Policy for remapping uncertain annotations (-1.0).
+            uncertainty_policy: Policy for remapping uncertain annotations.
                 Must be 'u_zeros' (maps to 0.0) or 'u_ones' (maps to 1.0).
+            hf_4class_encoding: Whether labels use the 4-class integer encoding
+                (0=unlabeled, 1=uncertain, 2=absent, 3=present).
         """
+        if uncertainty_policy not in ("u_zeros", "u_ones"):
+            raise ValueError(
+                f"uncertainty_policy must be 'u_zeros' or 'u_ones', got {uncertainty_policy!r}"
+            )
         self.hf_dataset: Any = hf_dataset
         self.transforms: Any | None = transforms
         self.label_names: list[str] = list(label_names) if label_names is not None else LABEL_NAMES
         self.uncertainty_policy: str = uncertainty_policy
+        self.hf_4class_encoding: bool = hf_4class_encoding
 
     def __len__(self) -> int:
         """Returns the total number of samples in the dataset split."""
         return len(self.hf_dataset)
 
     def _remap_label(self, val: float | int | None) -> float:
-        """Remaps uncertainty labels according to the configured uncertainty policy.
+        """Remaps a raw CheXpert annotation to a binary {0.0, 1.0} label.
 
-        Maps -1.0 to 0.0 for u_zeros or -1.0 to 1.0 for u_ones. Passes through
-        0.0 and 1.0 unchanged. Treats None or NaN as 0.0.
+        Handles both the HuggingFace 4-class integer encoding
+        (0=unlabeled, 1=uncertain, 2=absent, 3=present) and the CSV encoding
+        (-1.0=uncertain, 0.0=absent, 1.0=present). Uncertain values are resolved
+        according to the configured uncertainty policy.
 
         Args:
-            val: Raw annotation value from dataset record.
+            val: Raw annotation value from the dataset record.
 
         Returns:
-            Remapped floating point binary label (0.0 or 1.0).
+            Remapped binary label as a float (0.0 or 1.0).
         """
         if val is None:
             return 0.0
         val_float: float = float(val)
         if math.isnan(val_float):
             return 0.0
+
+        if self.hf_4class_encoding:
+            if val_float == _HF_PRESENT:
+                return 1.0
+            if val_float == _HF_UNCERTAIN:
+                return 0.0 if self.uncertainty_policy == "u_zeros" else 1.0
+            # unlabeled (0) and absent (2) both map to negative
+            return 0.0
+
         if val_float == -1.0:
             return 0.0 if self.uncertainty_policy == "u_zeros" else 1.0
         return val_float
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        """Retrieves and transforms an image and its 14-label target vector.
+        """Retrieves and transforms an image and its label vector.
 
         Args:
             idx: Integer index of the sample to retrieve.
 
         Returns:
-            Dictionary containing 'pixel_values' tensor and 'labels' float tensor.
+            Dictionary with 'pixel_values' tensor and 'labels' float tensor.
         """
         item: dict[str, Any] = self.hf_dataset[idx]
         image_data: Any = item.get("image", item.get("img"))
@@ -101,9 +136,7 @@ class CheXpertDataset(Dataset):
         image_rgb: Image.Image = image_obj.convert("RGB")
 
         pixel_values: torch.Tensor = (
-            self.transforms(image_rgb)
-            if self.transforms is not None
-            else image_rgb
+            self.transforms(image_rgb) if self.transforms is not None else image_rgb
         )
 
         labels: torch.Tensor = torch.tensor(
@@ -114,56 +147,103 @@ class CheXpertDataset(Dataset):
         return {"pixel_values": pixel_values, "labels": labels}
 
 
+def _filter_frontal(split: Any) -> Any:
+    """Filters a split to frontal views if a view column is present.
+
+    Args:
+        split: HuggingFace Dataset split.
+
+    Returns:
+        Filtered split (unchanged if no recognized view column exists).
+    """
+    if "Frontal/Lateral" in split.column_names:
+        # danjacobellis/chexpert: ClassLabel 0 = Frontal, 1 = Lateral.
+        return split.filter(lambda r: r["Frontal/Lateral"] in (0, "Frontal", "0Frontal"))
+    if "view" in split.column_names:
+        return split.filter(lambda r: r["view"] == "Frontal")
+    return split
+
+
 def build_chexpert_dataloaders(
     config: dict[str, Any],
     train_transforms: Any,
     val_transforms: Any,
-) -> tuple[DataLoader, DataLoader]:
-    """Loads CheXpert from HuggingFace, applies subset sampling, and builds DataLoaders.
+) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Loads CheXpert and builds train/val/test DataLoaders.
+
+    Protocol:
+      * Validation uses the full official validation split (model selection).
+      * Test is a deterministic carve-out (``subset.test_fraction``) from the
+        shuffled training subset, so a genuine held-out test set exists.
 
     Args:
-        config: Configuration dictionary specifying dataset, subset, and training parameters.
+        config: Configuration dict specifying dataset/subset/training parameters.
         train_transforms: Transform pipeline for the training split.
-        val_transforms: Transform pipeline for the validation split.
+        val_transforms: Transform pipeline for validation and test splits.
 
     Returns:
-        Tuple containing (train_loader, val_loader).
+        Tuple of (train_loader, val_loader, test_loader).
     """
-    repo_name: str = config.get("dataset", {}).get("hf_repo", "danjacobellis/chexpert")
-    uncertainty_policy: str = config.get("dataset", {}).get("uncertainty_policy", "u_zeros")
-    frontal_only: bool = config.get("dataset", {}).get("frontal_only", True)
-    train_subset_size: int | None = config.get("subset", {}).get("train_size")
-    seed: int = config.get("training", {}).get("seed", config.get("seed", 42))
-    batch_size: int = config.get("training", {}).get("batch_size", 32)
-    num_workers: int = config.get("training", {}).get("num_workers", 2)
-    pin_memory: bool = config.get("training", {}).get("pin_memory", True)
+    dataset_cfg: dict[str, Any] = config.get("dataset", {})
+    subset_cfg: dict[str, Any] = config.get("subset", {})
+    training_cfg: dict[str, Any] = config.get("training", {})
+
+    repo_name: str = dataset_cfg.get("hf_repo", "danjacobellis/chexpert")
+    uncertainty_policy: str = dataset_cfg.get("uncertainty_policy", "u_zeros")
+    hf_4class: bool = bool(dataset_cfg.get("hf_4class_encoding", True))
+    label_names: list[str] = list(dataset_cfg.get("label_names", LABEL_NAMES))
+    frontal_only: bool = bool(dataset_cfg.get("frontal_only", True))
+
+    train_subset_size: int | None = subset_cfg.get("train_size")
+    test_fraction: float = float(subset_cfg.get("test_fraction", 0.0))
+    seed: int = int(subset_cfg.get("seed", training_cfg.get("seed", 42)))
+
+    batch_size: int = int(training_cfg.get("batch_size", 32))
+    num_workers: int = int(training_cfg.get("num_workers", 2))
+    pin_memory: bool = bool(training_cfg.get("pin_memory", True))
 
     dataset_dict: Any = load_dataset(repo_name)
     train_split: Any = dataset_dict["train"]
-    val_split: Any = dataset_dict["validation"] if "validation" in dataset_dict else dataset_dict["val"]
+    val_split: Any = dataset_dict.get("validation") or dataset_dict.get("val")
 
     if frontal_only:
-        if "Frontal/Lateral" in train_split.column_names:
-            train_split = train_split.filter(lambda r: r["Frontal/Lateral"] == "Frontal")
-            val_split = val_split.filter(lambda r: r["Frontal/Lateral"] == "Frontal")
-        elif "view" in train_split.column_names:
-            train_split = train_split.filter(lambda r: r["view"] == "Frontal")
-            val_split = val_split.filter(lambda r: r["view"] == "Frontal")
+        train_split = _filter_frontal(train_split)
+        val_split = _filter_frontal(val_split)
 
+    # Deterministic subset selection (shuffle with fixed seed, take first N).
+    train_split = train_split.shuffle(seed=seed)
     if train_subset_size is not None and train_subset_size < len(train_split):
-        train_split = train_split.shuffle(seed=seed).select(range(train_subset_size))
+        train_split = train_split.select(range(train_subset_size))
+
+    # Deterministic held-out test carve-out from the training subset.
+    if test_fraction > 0.0:
+        num_test: int = int(round(len(train_split) * test_fraction))
+        test_split = train_split.select(range(num_test))
+        train_split = train_split.select(range(num_test, len(train_split)))
+    else:
+        # Fall back to the official validation split as the test set.
+        test_split = val_split
 
     train_dataset: CheXpertDataset = CheXpertDataset(
         hf_dataset=train_split,
         transforms=train_transforms,
-        label_names=LABEL_NAMES,
+        label_names=label_names,
         uncertainty_policy=uncertainty_policy,
+        hf_4class_encoding=hf_4class,
     )
     val_dataset: CheXpertDataset = CheXpertDataset(
         hf_dataset=val_split,
         transforms=val_transforms,
-        label_names=LABEL_NAMES,
+        label_names=label_names,
         uncertainty_policy=uncertainty_policy,
+        hf_4class_encoding=hf_4class,
+    )
+    test_dataset: CheXpertDataset = CheXpertDataset(
+        hf_dataset=test_split,
+        transforms=val_transforms,
+        label_names=label_names,
+        uncertainty_policy=uncertainty_policy,
+        hf_4class_encoding=hf_4class,
     )
 
     train_loader: DataLoader = DataLoader(
@@ -172,6 +252,7 @@ def build_chexpert_dataloaders(
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        drop_last=True,
     )
     val_loader: DataLoader = DataLoader(
         val_dataset,
@@ -180,5 +261,12 @@ def build_chexpert_dataloaders(
         num_workers=num_workers,
         pin_memory=pin_memory,
     )
+    test_loader: DataLoader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
 
-    return train_loader, val_loader
+    return train_loader, val_loader, test_loader

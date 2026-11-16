@@ -15,6 +15,7 @@ class MultiLabelHead(nn.Module):
         in_features: int,
         num_labels: int,
         dropout: float = 0.1,
+        layernorm: bool = False,
     ) -> None:
         """Linear classification head for multi-label binary classification.
 
@@ -25,8 +26,10 @@ class MultiLabelHead(nn.Module):
             in_features: Dimensionality of the input feature vector.
             num_labels: Total number of binary labels to predict.
             dropout: Dropout probability applied prior to the linear projection.
+            layernorm: Whether to apply LayerNorm to the input features first.
         """
         super().__init__()
+        self.norm: nn.LayerNorm | None = nn.LayerNorm(in_features) if layernorm else None
         self.dropout: nn.Dropout = nn.Dropout(p=dropout)
         self.linear: nn.Linear = nn.Linear(in_features, num_labels)
 
@@ -39,6 +42,8 @@ class MultiLabelHead(nn.Module):
         Returns:
             Logits tensor of shape (batch_size, num_labels).
         """
+        if self.norm is not None:
+            x = self.norm(x)
         return self.linear(self.dropout(x))
 
 

@@ -1,8 +1,51 @@
 """Task-specific loss functions for multi-label (CheXpert) and multi-class (Brain Tumor) classification."""
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def compute_pos_weight(
+    labels: np.ndarray,
+    mode: str = "none",
+    max_weight: float | None = None,
+) -> torch.Tensor | None:
+    """Computes per-label positive weights for imbalanced multi-label data.
+
+    The paper protocol (Baharoon et al., 2024) uses unweighted BCE, so the
+    default mode is 'none'. 'sqrt_inv' applies the dampened square-root
+    inverse-prevalence weighting used in the reference baseline notebooks and is
+    provided as an explicit, reportable deviation.
+
+    Args:
+        labels: Binary label matrix of shape (N, num_labels).
+        mode: 'none' (no weighting), 'inv' (inverse prevalence), or
+            'sqrt_inv' (square-root inverse prevalence).
+        max_weight: Optional cap applied to each weight.
+
+    Returns:
+        Tensor of shape (num_labels,) or None when mode is 'none'.
+    """
+    if mode == "none":
+        return None
+
+    labels_arr: np.ndarray = np.asarray(labels, dtype=np.float32)
+    pos_counts: np.ndarray = labels_arr.sum(axis=0)
+    neg_counts: np.ndarray = labels_arr.shape[0] - pos_counts
+    safe_pos: np.ndarray = np.maximum(pos_counts, 1.0)
+
+    if mode == "inv":
+        weights: np.ndarray = neg_counts / safe_pos
+    elif mode == "sqrt_inv":
+        weights = np.sqrt(neg_counts / safe_pos)
+    else:
+        raise ValueError(f"Unknown pos_weight mode: {mode!r}")
+
+    if max_weight is not None:
+        weights = np.clip(weights, None, max_weight)
+
+    return torch.tensor(weights, dtype=torch.float32)
 
 
 class MultiLabelBCELoss(nn.Module):

@@ -1,9 +1,11 @@
 # ===== Brain Tumor MRI Dataset Configuration =====
+# Reference: Baharoon et al. (2024) and notebooks/0_Baseline_BrainTumor.ipynb.
 
 dataset:
   name: brain_tumor
   source: ultralytics_ndjson   # ultralytics_ndjson | folder
   ndjson_path: cheng-brain-tumor-mri-detection.ndjson
+  image_root: data/brain_tumor/images
   class_names:
     0: meningioma
     1: glioma
@@ -11,19 +13,26 @@ dataset:
   num_classes: 3
   image_size_native: 512
   retain_bbox_metadata: true   # store boxes as metadata, not used for classification
+  mri_clip_percentile_low: 5.0   # MRI intensity percentile clipping (paper protocol)
+  mri_clip_percentile_high: 95.0
 
 preprocessing:
   image_size: 224
   normalize_mean: [0.485, 0.456, 0.406]
   normalize_std: [0.229, 0.224, 0.225]
   train_augmentation: true
+  crop_scale_min: 0.75
+  crop_scale_max: 1.0
 
 training:
-  batch_size: 32
+  batch_size: 128
   num_epochs: 20
+  optimizer: SGD
+  sgd_momentum: 0.9
+  learning_rate: 1.0e-2
   lora_lr: 2.0e-4
   head_lr: 5.0e-3
-  weight_decay: 0.01
+  weight_decay: 0.0
   fp16: true
   seed: 42
   output_dir: outputs/brain_tumor

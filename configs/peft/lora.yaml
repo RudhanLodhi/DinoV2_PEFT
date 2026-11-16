@@ -16,7 +16,10 @@ lora:
     - classifier
   task_type: FEATURE_EXTRACTION
 
+# Layer-selective adaptation (E3c/E3d/E4).
+# Applied by src.models.apply_lora via `strategy` (named) or `layers_pattern`
+# (regex matched against module names, e.g. "layer\\.(9|10|11)\\.").
 layer_selection:
   enabled: false                # set true for E3/E4 layer-selective experiments
-  layers: null                  # null = all layers; list of int indices otherwise
+  layers: null                  # explicit list of int block indices (overrides strategy)
   strategy: upper_quarter       # upper_quarter | lower_quarter | distributed | custom

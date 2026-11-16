@@ -55,9 +55,11 @@ These values are reference results, not guaranteed results for a new reproductio
 ### Primary dataset: CheXpert
 
 - Multi-label chest X-ray classification.
-- Five target labels in the base paper's benchmark.
+- Five competition target labels (`Atelectasis`, `Cardiomegaly`, `Consolidation`, `Edema`, `Pleural Effusion`), matching the base paper's benchmark and `configs/chexpert.yaml`.
 - The paper uses frontal views only.
 - Reuse the authors' preprocessing and data splits wherever possible.
+
+**Split protocol:** The official CheXpert validation split contains only 234 images, which is too small for stable three-decimal AUROC reporting. We therefore keep the full official validation split for model selection and hold out a deterministic test carve-out (20% of the training subset) as a genuine held-out test set. Selection never touches the test carve-out.
 
 **Rationale:** It provides a direct comparison with the base paper's PEFT results.
 
@@ -69,12 +71,12 @@ These values are reference results, not guaranteed results for a new reproductio
 
 ### Backbone decision
 
-Choose one of the following tracks before running experiments:
+The implemented and executed baselines use **DINOv2 ViT-B/14** (`facebook/dinov2-base`), the same backbone the paper also evaluates. This is **Track B — resource-constrained replication**.
 
 - **Track A — Exact reproduction:** Use DINOv2 ViT-g/14 and reproduce the paper's PEFT setup if available compute permits.
-- **Track B — Resource-constrained replication:** Use DINOv2 ViT-B/14, which the paper also evaluates, and reproduce the methodology at smaller scale.
+- **Track B — Resource-constrained replication (active):** Use DINOv2 ViT-B/14 and reproduce the methodology at smaller scale.
 
-Track B is a scaled replication, not an exact reproduction of the ViT-g/14 PEFT results. Do not directly present ViT-B/14 results as if they used the same backbone as the paper's Table 9.
+Track B is a scaled replication, not an exact reproduction of the ViT-g/14 PEFT results. Do not present ViT-B/14 results as if they used the same backbone as the paper's Table 9 (LoRA / PEFT numbers). Valid Track B comparison points are the paper's ViT-B/14 **linear-probing** results.
 
 ## 4. Phase I — Reproduce the Baselines
 

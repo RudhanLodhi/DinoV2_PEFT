@@ -2,8 +2,16 @@
 
 from collections.abc import Sequence
 from typing import Any
+
 import numpy as np
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    roc_auc_score,
+)
+from sklearn.preprocessing import label_binarize
 
 
 def compute_auroc(
@@ -89,6 +97,60 @@ def compute_accuracy(labels: np.ndarray, preds: np.ndarray) -> float:
         Accuracy proportion.
     """
     return float(accuracy_score(labels, preds))
+
+
+def compute_multiclass_metrics(
+    labels: np.ndarray,
+    probs: np.ndarray,
+    class_names: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Computes accuracy, macro-F1, per-class OvR AUROC, and mean AUROC.
+
+    Mirrors the evaluation used by 0_Baseline_BrainTumor.ipynb so multi-class
+    results are reproducible directly from the library.
+
+    Args:
+        labels: Ground truth integer class indices of shape (N,).
+        probs: Predicted class probabilities of shape (N, num_classes).
+        class_names: Optional class names used as AUROC dict keys.
+
+    Returns:
+        Dict with 'accuracy', 'macro_f1', 'per_class_auroc', and 'mean_auroc'.
+    """
+    labels_arr: np.ndarray = np.asarray(labels).astype(int)
+    probs_arr: np.ndarray = np.asarray(probs)
+    num_classes: int = probs_arr.shape[1]
+    names: list[str] = (
+        list(class_names) if class_names is not None else [str(i) for i in range(num_classes)]
+    )
+
+    preds: np.ndarray = np.argmax(probs_arr, axis=1)
+    accuracy: float = float(accuracy_score(labels_arr, preds))
+    macro_f1: float = float(f1_score(labels_arr, preds, average="macro", zero_division=0.0))
+
+    labels_bin: np.ndarray = label_binarize(labels_arr, classes=list(range(num_classes)))
+    if num_classes == 2 and labels_bin.shape[1] == 1:
+        labels_bin = np.hstack([1 - labels_bin, labels_bin])
+
+    per_class_auroc: dict[str, float] = {}
+    valid_aurocs: list[float] = []
+    for c in range(num_classes):
+        c_name: str = names[c] if c < len(names) else f"Class {c}"
+        if len(np.unique(labels_bin[:, c])) > 1:
+            score: float = float(roc_auc_score(labels_bin[:, c], probs_arr[:, c]))
+            per_class_auroc[c_name] = score
+            valid_aurocs.append(score)
+        else:
+            per_class_auroc[c_name] = float("nan")
+
+    mean_auroc: float = float(np.mean(valid_aurocs)) if valid_aurocs else float("nan")
+
+    return {
+        "accuracy": accuracy,
+        "macro_f1": macro_f1,
+        "per_class_auroc": per_class_auroc,
+        "mean_auroc": mean_auroc,
+    }
 
 
 def compute_confusion_matrix(

@@ -76,6 +76,7 @@ class BrainTumorDataset(Dataset):
         return {
             "pixel_values": pixel_values,
             "label": label,
+            "labels": label,  # alias for Trainer-compatible consumption
             "bbox_metadata": record.get("bbox_metadata", []),
         }
 
@@ -96,6 +97,7 @@ def brain_tumor_collate_fn(batch: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "pixel_values": pixel_values,
         "label": labels,
+        "labels": labels,  # alias for Trainer-compatible consumption
         "bbox_metadata": bbox_metadata,
     }
 
