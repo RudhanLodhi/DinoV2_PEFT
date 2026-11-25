@@ -76,7 +76,7 @@ def get_attention_layer_names(model: nn.Module) -> list[str]:
     Returns:
         Sorted list of matching module names.
     """
-    keywords: tuple[str, ...] = ("attention", "query", "value", "key")
+    keywords: tuple[str, ...] = ("attention", "query", "value", "key", "q_proj", "k_proj", "v_proj")
     matched_names: set[str] = {
         name
         for name, _ in model.named_modules()

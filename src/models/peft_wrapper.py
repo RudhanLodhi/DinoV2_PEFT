@@ -92,6 +92,35 @@ def resolve_layers(
     return None
 
 
+_ATTN_NAME_FALLBACKS: dict[str, str] = {
+    "query": "q_proj",
+    "key": "k_proj",
+    "value": "v_proj",
+    "q_proj": "query",
+    "k_proj": "key",
+    "v_proj": "value",
+}
+
+
+def _resolve_target_modules(model: nn.Module, target_modules: Any) -> Any:
+    """Maps attention target names between transformers 4.x (query/value) and 5.x (q_proj/v_proj)."""
+    if not isinstance(target_modules, (list, tuple)):
+        return target_modules
+    named_modules = getattr(model, "named_modules", None)
+    if named_modules is None:
+        return target_modules
+    leaf_names: set[str] = {name.rsplit(".", 1)[-1] for name, _ in named_modules() if name}
+    if not leaf_names:
+        return target_modules
+    resolved: list[str] = []
+    for target in target_modules:
+        if target not in leaf_names and _ATTN_NAME_FALLBACKS.get(target) in leaf_names:
+            resolved.append(_ATTN_NAME_FALLBACKS[target])
+        else:
+            resolved.append(target)
+    return resolved
+
+
 def apply_lora(model: nn.Module, lora_cfg: dict[str, Any]) -> Any:
     """Applies LoRA to the DINOv2 backbone using the provided configuration dict.
 
@@ -109,7 +138,9 @@ def apply_lora(model: nn.Module, lora_cfg: dict[str, Any]) -> Any:
     r: int = lora_cfg.get("r", 48)
     lora_alpha: int = lora_cfg.get("lora_alpha", lora_cfg.get("alpha", 16))
     lora_dropout: float = lora_cfg.get("lora_dropout", 0.1)
-    target_modules: Any = lora_cfg.get("target_modules", ["query", "value"])
+    target_modules: Any = _resolve_target_modules(
+        model, lora_cfg.get("target_modules", ["query", "value"])
+    )
     bias: str = lora_cfg.get("bias", "none")
     modules_to_save: list[str] | None = lora_cfg.get("modules_to_save", None)
 
@@ -168,7 +199,9 @@ def apply_ia3(model: nn.Module, ia3_cfg: dict[str, Any]) -> Any:
     Returns:
         PEFT-wrapped model with IA3 scaling vectors.
     """
-    target_modules: Any = ia3_cfg.get("target_modules", ["key", "value", "dense"])
+    target_modules: Any = _resolve_target_modules(
+        model, ia3_cfg.get("target_modules", ["key", "value", "dense"])
+    )
     feedforward_modules: Any = ia3_cfg.get("feedforward_modules", ["dense"])
     modules_to_save: list[str] | None = ia3_cfg.get("modules_to_save", None)
 
