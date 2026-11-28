@@ -96,9 +96,11 @@ _ATTN_NAME_FALLBACKS: dict[str, str] = {
     "query": "q_proj",
     "key": "k_proj",
     "value": "v_proj",
+    "output": "o_proj",
     "q_proj": "query",
     "k_proj": "key",
     "v_proj": "value",
+    "o_proj": "dense",
 }
 
 
@@ -109,16 +111,24 @@ def _resolve_target_modules(model: nn.Module, target_modules: Any) -> Any:
     named_modules = getattr(model, "named_modules", None)
     if named_modules is None:
         return target_modules
-    leaf_names: set[str] = {name.rsplit(".", 1)[-1] for name, _ in named_modules() if name}
-    if not leaf_names:
+    linear_leaf_names: set[str] = {
+        name.rsplit(".", 1)[-1]
+        for name, mod in named_modules()
+        if name and isinstance(mod, nn.Linear)
+    }
+    if not linear_leaf_names:
         return target_modules
     resolved: list[str] = []
     for target in target_modules:
-        if target not in leaf_names and _ATTN_NAME_FALLBACKS.get(target) in leaf_names:
+        if target in linear_leaf_names:
+            resolved.append(target)
+        elif _ATTN_NAME_FALLBACKS.get(target) in linear_leaf_names:
             resolved.append(_ATTN_NAME_FALLBACKS[target])
+        elif target == "output" and "dense" in linear_leaf_names:
+            resolved.append("dense")
         else:
             resolved.append(target)
-    return resolved
+    return list(dict.fromkeys(resolved))
 
 
 def apply_lora(model: nn.Module, lora_cfg: dict[str, Any]) -> Any:
