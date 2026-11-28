@@ -131,6 +131,23 @@ def _resolve_target_modules(model: nn.Module, target_modules: Any) -> Any:
     return list(dict.fromkeys(resolved))
 
 
+def _ensure_peft_torchao_compat() -> None:
+    """Disables peft's optional torchao dispatch if an incompatible torchao version is installed."""
+    try:
+        import peft.import_utils as peft_import_utils
+        try:
+            peft_import_utils.is_torchao_available()
+        except ImportError:
+            peft_import_utils.is_torchao_available = lambda: False
+            try:
+                import peft.tuners.lora.torchao as peft_lora_torchao
+                peft_lora_torchao.is_torchao_available = lambda: False
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def apply_lora(model: nn.Module, lora_cfg: dict[str, Any]) -> Any:
     """Applies LoRA to the DINOv2 backbone using the provided configuration dict.
 
@@ -192,6 +209,7 @@ def apply_lora(model: nn.Module, lora_cfg: dict[str, Any]) -> Any:
     if layers_to_transform is not None:
         config_kwargs["layers_to_transform"] = list(layers_to_transform)
 
+    _ensure_peft_torchao_compat()
     peft_config: LoraConfig = LoraConfig(**config_kwargs)
     return get_peft_model(model, peft_config)
 
@@ -215,6 +233,7 @@ def apply_ia3(model: nn.Module, ia3_cfg: dict[str, Any]) -> Any:
     feedforward_modules: Any = ia3_cfg.get("feedforward_modules", ["dense"])
     modules_to_save: list[str] | None = ia3_cfg.get("modules_to_save", None)
 
+    _ensure_peft_torchao_compat()
     ia3_config: IA3Config = IA3Config(
         target_modules=target_modules,
         feedforward_modules=feedforward_modules,
