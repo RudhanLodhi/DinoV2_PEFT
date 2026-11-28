@@ -4,7 +4,7 @@
 dataset:
   name: brain_tumor
   source: ultralytics_ndjson   # ultralytics_ndjson | folder
-  ndjson_path: cheng-brain-tumor-mri-detection.ndjson
+  ndjson_path: cheng-brain-tumor-mri.ndjson
   image_root: data/brain_tumor/images
   class_names:
     0: meningioma

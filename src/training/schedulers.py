@@ -35,3 +35,17 @@ def get_scheduler(
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
     )
+
+
+def get_cosine_schedule_with_warmup(
+    optimizer: Optimizer,
+    num_warmup_steps: int,
+    num_training_steps: int,
+) -> LambdaLR:
+    """Convenience wrapper returning a cosine-decay scheduler with linear warmup."""
+    return get_scheduler(
+        name="cosine",
+        optimizer=optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps,
+    )
